@@ -5,3 +5,4 @@ apscheduler
 google-generativeai
 pillow
 python-multipart
+pydantic-settings
