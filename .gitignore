@@ -1,0 +1,40 @@
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment Variables (STRICT)
+.env
+.env.*
+**/.env
+**/.env.*
+backend/.env
+frontend/.env
+
+# Firebase & Secrets
+serviceAccountKey.json
+**/serviceAccountKey.json
+google-services.xml
+google-services.json
+GoogleService-Info.plist
+
+# Flutter/Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+
+# Python/FastAPI
+__pycache__/
+*.py[cod]
+.venv
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node/npm
+node_modules/

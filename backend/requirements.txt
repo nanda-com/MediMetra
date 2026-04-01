@@ -1,0 +1,7 @@
+firebase-admin
+fastapi
+uvicorn
+apscheduler
+google-generativeai
+pillow
+python-multipart
