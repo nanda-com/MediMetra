@@ -76,11 +76,6 @@ MediMetra uses environment variables for secure credential management.
 > [!IMPORTANT]
 > Never commit `.env` or `serviceAccountKey.json` to version control. They are explicitly ignored in our `.gitignore`.
 
-### 5.2 Firebase Best Practices
-- **Security Rules:** Always enforce strict Firestore and Storage security rules.
-- **App Check:** Use Firebase App Check to protect your backend from unauthorized traffic.
-- **Service Accounts:** Use the Principle of Least Privilege. 
-
 ## 6. Detailed Implementation Steps
 
 ### 6.1 Google Colab Setup (AI Backend)
@@ -116,4 +111,71 @@ MediMetra uses environment variables for secure credential management.
 - `medicineId`, `userId`, `reportId`, `name`, `dosage`, `timings`, `active`.
 
 ### QR Shares
-- `shareId`, `userId`, `token`, `expiry`, `reports` (array of IDs).
+- `shareId`: Unique identifier for the share.
+- `userId`: Reference to the user who created it.
+- `reportIds`: Array of strings (references to included reports).
+- `token`: Unique access token.
+- `expiresAt`: Timestamp of expiration.
+- `maxViews`: (Optional) Maximum allowed views.
+- `viewCount`: Number of times the link has been accessed.
+- `createdAt`: Timestamp of creation.
+
+## 8. User Flows
+
+### 8.1 Onboarding
+1. User enters phone number → receives OTP → verifies.
+2. User enters name and selects preferred language (English/Hindi).
+
+### 8.2 Uploading a Report
+1. Tap "Add Report" → choose file (PDF/Image).
+2. Code handles upload to Firebase Storage → triggers AI summarization.
+3. User sees "Processing..." → summary appears after extraction.
+4. Option to add medicine reminders directly from detected data.
+
+### 8.3 AI Assistant
+1. Tap "Ask AI" → enters chat interface.
+2. Ask questions like: *"What was my last blood test result?"* or *"मुझे कब दवा लेनी है?"*
+3. Backend retrieves context from ChromaDB and returns an AI-generated answer.
+
+### 8.4 Medicine Reminder
+1. User adds medicine (manual or AI-extracted).
+2. Notification fires at the scheduled time: *"Take Ferrous Sulfate – 200 mg – with breakfast"*.
+3. User marks as "taken" to track compliance.
+
+### 8.5 QR Share
+1. User selects reports → sets expiry → taps "Generate QR".
+2. Doctor scans QR → view-only access to specific summaries and reports.
+
+## 9. Challenges & Mitigations
+
+| Challenge | Mitigation |
+| :--- | :--- |
+| **LLM Memory** | Use 4‑bit quantization of Llama 3 8B or fallback to Phi‑3‑mini. |
+| **Hindi Support** | System prompting for multilingual responses; test with Aya‑23 if required. |
+| **OCR Accuracy** | Utilize PaddleOCR for high accuracy; allow manual summary correction. |
+| **Device Restarts** | Use `workmanager` to re-schedule alerts on boot. |
+| **Colab Timeout** | Use Colab Pro or fallback to Hugging Face Spaces/Replit. |
+
+## 10. Future Scope
+- **Insurance Claim Integration**: Direct API submission to insurers.
+- **Multi-language Expansion**: Support for Malayalam, Tamil, etc.
+- **Wearable Integration**: Sync with smartwatches for vital signs.
+- **Telemedicine**: In-app video consultations.
+- **Health Trends**: AI-driven analysis of metrics over time.
+
+## 11. Conclusion
+**MediMetra** provides a privacy‑focused, zero-recurring-cost health solution for migrant workers. By decentralizing the AI backend and leveraging mobile-first design, it addresses critical health inequalities with a scalable, practical architecture.
+
+## 12. Appendix: Sample API Endpoints
+
+### `/summarize` (POST)
+- **Input**: `{ "fileUrl": "...", "userId": "..." }`
+- **Process**: Download → OCR → Extraction → Firestore Storage.
+
+### `/chat` (POST)
+- **Input**: `{ "userId": "...", "query": "..." }`
+- **Process**: Retrieval → RAG Prompt → Ollama Call → Response.
+
+### `/add_reminder` (Cloud Function)
+- **Input**: `{ "userId": "...", "medicine": {...} }`
+- **Process**: Store in Firestore → Trigger local app scheduling.
