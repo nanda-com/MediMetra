@@ -1,0 +1,33 @@
+# GitHub Linguist overrides
+# Vendor / ignore platform boilerplate so GitHub shows Python + Dart only
+
+# Flutter Windows runner (C++)
+frontend/windows/**         linguist-vendored
+
+# Flutter iOS/macOS (Objective-C / Swift boilerplate)
+frontend/ios/**             linguist-vendored
+frontend/macos/**           linguist-vendored
+
+# Flutter Linux runner (C++)
+frontend/linux/**           linguist-vendored
+
+# Flutter Android (Kotlin / Groovy / CMake boilerplate)
+frontend/android/**         linguist-vendored
+
+# Flutter Web (JS/HTML boilerplate)
+frontend/web/**             linguist-vendored
+
+# Flutter generated / build artefacts
+frontend/build/**           linguist-vendored
+frontend/.dart_tool/**      linguist-vendored
+frontend/.flutter-plugins-dependencies linguist-vendored
+frontend/pubspec.lock       linguist-vendored
+
+# Python virtualenv & compiled output
+backend/venv/**             linguist-vendored
+backend/__pycache__/**      linguist-vendored
+backend/uploads/**          linguist-vendored
+
+# Explicitly surface the languages we care about
+*.py                        linguist-detectable=true
+*.dart                      linguist-detectable=true
