@@ -1,10 +1,13 @@
-# MediMetra - Digital Health Record Management for Migrant Workers
+# MediMitra – Digital Health Record Management for Migrant Workers
 
 ## 1. Overview
-**MediMetra** is a mobile‑first platform designed for migrant workers to manage their health records, receive AI‑powered insights, set medicine reminders, and securely share reports with doctors via time‑limited QR codes. The entire AI backend (summarization and conversational assistant) runs offline using open‑source LLMs on Google Colab, ensuring data privacy and no recurring API costs.
+
+**MediMitra** is a mobile‑first platform designed for migrant workers to manage their health records, receive AI‑powered insights, set medicine reminders, and securely share reports with doctors via time‑limited QR codes. The entire AI backend (summarization and conversational assistant) runs locally on the user's laptop using open‑source LLMs (Ollama + Llama 3), ensuring data privacy and no recurring API costs. The mobile app connects to the laptop over the local Wi‑Fi network, so no internet connection is required for the AI features.
 
 - **Target Users:** Migrant workers in Kerala (and eventually across India).
 - **Alignment:** SDG 3 (Good Health), SDG 8 (Decent Work), SDG 10 (Reduced Inequalities).
+
+---
 
 ## 2. Core Features
 
@@ -12,170 +15,290 @@
 | :--- | :--- |
 | **Report Collection** | Upload medical reports (PDF/Image) from gallery or camera. |
 | **AI Summarizer** | Extracts structured info (patient, doctor, medicines, etc.) from uploaded reports. |
-| **AI Assistant (RAG)** | Answers questions about user’s health records and general medical knowledge using an offline LLM. |
-| **Medicine Reminder** | Schedules local notifications with dosing instructions (e.g., “Take 200 mg with food”). |
-| **QR Code Sharing** | Generates a time‑limited QR code that doctors can scan to view the user’s summary and reports. |
+| **AI Assistant (RAG)** | Answers questions about user's health records and general medical knowledge using an offline LLM. |
+| **Medicine Reminder** | Schedules local notifications with dosing instructions (e.g., "Take 200 mg with food"). |
+| **QR Code Sharing** | Generates a time‑limited QR code that doctors can scan to view the user's summary and reports. |
+| **Profile Management** | Collects and stores user profile (name, phone, allergies, etc.) with optional fields. |
+| **Google Sign‑in** | Authenticate with Google; after login, user completes required profile fields. |
 | **Future: Insurance Claim** | Submit claims directly from the app by selecting relevant reports. |
+
+---
 
 ## 3. System Architecture
 
 ### 3.1 High‑Level Components
-```mermaid
-graph TD
-    subgraph "Flutter Mobile App"
-        A[Firebase Auth]
-        B[Firestore]
-        C[Firebase Storage]
-        D[Local DB - Hive]
-        E[Local Notifications]
-        F[WorkManager]
-    end
 
-    subgraph "Google Colab (AI Backend)"
-        G[FastAPI Server - ngrok]
-        H[Llama 3 8B - Ollama]
-        I[ChromaDB - Vector DB]
-        J[Multilingual Embedding - e5-small]
-        K[PaddleOCR]
-    end
-
-    A --- G
-    B --- G
-    C --- G
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Mobile App (Flutter)                     │
+│  - Firebase Auth (Google Sign‑in, Phone)                    │
+│  - Firestore (profile, reports, shares)                     │
+│  - Firebase Storage (report images)                         │
+│  - Hive (local offline storage)                             │
+│  - Local notifications                                      │
+└───────────────────────────┬─────────────────────────────────┘
+                            │ HTTP (local network)
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Laptop (Backend & AI)                     │
+│  - FastAPI (Python)                                         │
+│  - Ollama (Llama 3 8B Instruct, 4‑bit)                      │
+│  - ChromaDB (vector database)                               │
+│  - Tesseract OCR                                            │
+│  - Firebase Admin SDK                                       │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ### 3.2 Data Flow
-1. **User uploads report:** Flutter app uploads file to Firebase Storage → Cloud Function triggers the Python summarizer (via HTTP) → Summarizer runs OCR → extracts structured data → stores summary in Firestore → generates embeddings → stores in ChromaDB.
-2. **User asks question in AI Assistant:** App sends query to Colab `/chat` endpoint → Backend retrieves relevant chunks from ChromaDB (user’s data + general knowledge) → prompts Llama → returns answer.
-3. **Medicine reminder creation:** App stores in Firestore + local Hive → schedules local notification using `flutter_local_notifications` with daily repeat.
-4. **QR code sharing:** App calls Cloud Function to generate token → stores in Firestore → creates QR code → doctor scans → web view validates token and displays summary.
+
+1. **Sign‑in & Profile:** User signs in with Google (or phone). App checks if profile exists; if not, prompts to complete required fields (name, phone). Profile is stored in Firestore under `users/{uid}`.
+
+2. **Report Upload:** Flutter app sends image to laptop's `/upload_report` endpoint → laptop runs Tesseract OCR → summarizer (Llama) extracts structured data → saves summary to Firestore and ChromaDB (local) → returns summary to app → app stores summary in Hive for offline access.
+
+3. **AI Assistant:** App sends query to laptop's `/chat` endpoint → laptop retrieves relevant chunks from ChromaDB → prompts Llama → returns answer → app displays answer and optionally uses text‑to‑speech.
+
+4. **Medicine Reminders:** App stores reminder in Firestore (for sync) and local Hive → schedules local notification using `flutter_local_notifications` with daily repeat.
+
+5. **QR Code Sharing:** App calls laptop's `/generate_share` endpoint → laptop stores token in Firestore (`shares` collection) → returns URL → app generates QR code → doctor scans → web view validates token and displays summary.
+
+---
 
 ## 4. Tech Stack
 
 | Layer | Technology |
 | :--- | :--- |
 | **Mobile App** | Flutter (Dart) |
-| **Backend** | Firebase (Auth, Firestore, Storage, Functions) |
-| **AI Backend** | Google Colab (with GPU T4), FastAPI, ngrok |
-| **LLM** | Llama 3 8B Instruct (4‑bit quantized via Ollama) |
+| **Backend (on laptop)** | FastAPI (Python), Firebase Admin SDK |
+| **AI Backend** | Ollama (local) + Llama 3 8B Instruct (4‑bit quantized) |
+| **OCR** | Tesseract (local) |
 | **Vector DB** | ChromaDB (local, persistent) |
 | **Embeddings** | intfloat/multilingual-e5-small |
-| **OCR** | PaddleOCR (Hindi & English support) |
+| **Cloud Services** | Firebase (Auth, Firestore, Storage, Hosting) |
 | **Local Notifications** | flutter_local_notifications + workmanager |
-| **Local Storage** | Hive (offline reminders & reports metadata) |
+| **Local Storage** | Hive (offline reports & reminders) |
 
-## 5. Security & Deployment
+---
+
+## 5. Security & Environment Setup
 
 ### 5.1 Environment Variables
-MediMetra uses environment variables for secure credential management. 
+
+MediMitra uses environment variables for secure credential management.
+
 1. **Locate** the `backend/.env.example` file.
 2. **Copy** it to `backend/.env`.
 3. **Fill in** your `FIREBASE_CREDENTIALS_PATH` or `FIREBASE_SERVICE_ACCOUNT_JSON`.
 4. **Add** your `GEMINI_API_KEY`.
 
 > [!IMPORTANT]
-> Never commit `.env` or `serviceAccountKey.json` to version control. They are explicitly ignored in our `.gitignore`.
+> Never commit `.env` or `serviceAccountKey.json` to version control. They are explicitly excluded in `.gitignore`.
+
+---
 
 ## 6. Detailed Implementation Steps
 
-### 6.1 Google Colab Setup (AI Backend)
-1. **Setup:** Create a new Colab notebook with GPU (T4). Install dependencies via `!pip install fastapi uvicorn pyngrok nest-asyncio paddlepaddle paddleocr chromadb sentence-transformers ollama`.
-2. **Ollama:** Install and serve Llama 3 using the Ollama installation script.
-3. **ChromaDB:** Initialize `PersistentClient` for local vector storage.
-4. **FastAPI Endpoints:**
-    - `/summarize`: Downloads file, runs OCR, extracts structured data via Llama, generates embeddings, and stores in ChromaDB.
-    - `/chat`: Implements RAG to answer queries based on user records.
-5. **Exposure:** Use `ngrok` to expose the FastAPI server to the internet.
+### 6.1 Laptop Setup (AI Backend)
+
+1. **Install Ollama** and pull the model:
+   ```bash
+   curl -fsSL https://ollama.com/install.sh | sh
+   ollama serve &
+   ollama pull llama3:8b-instruct-q4_K_M
+   ```
+
+2. **Set up Python environment:**
+   ```bash
+   pip install fastapi uvicorn chromadb sentence-transformers pytesseract opencv-python firebase-admin
+   ```
+
+3. **Set up Firebase:**
+   - Enable Firestore and Storage in test mode.
+   - Download the service account key and place it as `serviceAccountKey.json` in the backend folder.
+   - Set the storage bucket name in `firebase_config.py`.
+
+4. **Create FastAPI app** with endpoints:
+   - `/upload_report` – accept image, run Tesseract OCR, summarise with Llama, store in Firestore and ChromaDB.
+   - `/chat` – accept query, retrieve relevant chunks, build prompt, call Ollama, return answer.
+   - `/generate_share` and `/share/{token}` for QR sharing.
+   - `/reports/{user_id}` to fetch all reports from Firestore.
+
+5. **Run the server:**
+   ```bash
+   uvicorn main:app --host 0.0.0.0 --port 8000
+   ```
 
 ### 6.2 Firebase Setup
-1. **Auth:** Enable Phone and Email/Password.
-2. **Firestore Collections:** `users`, `reports`, `medicines`, `qrShares`.
-3. **Functions:** Implement logic for upload triggers and token generation.
+
+1. **Authentication** – Enable Google Sign‑in and Phone in the Firebase console.
+2. **Firestore Collections** (created automatically on first write):
+   - `users` – user profile (name, phone, weight, height, blood group, allergies, etc.)
+   - `reports` – metadata and AI‑extracted summary
+   - `medicines` – reminder details
+   - `qrShares` – tokens and expiry
+3. **Firebase Storage** – stores uploaded report images.
 
 ### 6.3 Flutter App Implementation
-1. **Hive:** Store medicines and metadata locally for offline access.
-2. **Notifications:** Use `flutter_local_notifications` for scheduled medicine alerts.
-3. **Chat UI:** Build a conversational interface connecting to the Colab endpoint via ngrok.
-4. **QR Sharing:** Implement token generation and dynamic QR code display.
+
+1. **Authentication** – Use `firebase_auth` and `google_sign_in`. After login, check profile existence in Firestore; if missing, navigate to Profile Setup screen.
+
+2. **Profile Management:**
+   - Required fields: Full name, Phone number
+   - Optional fields: Weight, Height, Blood Group, Allergies, Address, Guardian Contact
+   - Store under `users/{uid}`; allow editing later in Profile Screen.
+
+3. **Local Database** – Use `hive` to store reports and medicines offline.
+
+4. **Local Notifications** – `flutter_local_notifications` with `workmanager` for background scheduling. Use `zonedSchedule` with daily repeat.
+
+5. **AI Assistant Chat** – Call laptop's `/chat` endpoint via local IP. Show typing indicator. Voice input via `speech_to_text`; voice output via `flutter_tts`.
+
+6. **Report Upload** – Use `image_picker`, send to `/upload_report`. On response, store summary in Firestore and local Hive.
+
+7. **QR Code Share** – Call `/generate_share`, render QR with `qr_flutter`. Share via WhatsApp/email.
+
+### 6.4 Web View for QR Access
+
+- Simple HTML/JS page hosted on Firebase Hosting.
+- Reads token from URL query parameter, fetches from backend `/share/{token}`, validates expiry, and displays summary and report image.
+
+---
 
 ## 7. Data Models (Firestore)
 
-### Users
-- `userId`, `phone`, `name`, `language`, `createdAt`.
+### `users`
 
-### Reports
-- `reportId`, `userId`, `fileName`, `fileUrl`, `uploadDate`.
-- `summary`: Object containing patient info, doctor info, diagnosis, and medicines.
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `name` | string | Required – full name |
+| `phone` | string | Required – mobile number |
+| `weight` | number | Optional – in kg |
+| `height` | number | Optional – in cm |
+| `bloodGroup` | string | Optional |
+| `allergies` | string | Optional |
+| `email` | string | Auto‑filled from Google |
+| `address` | string | Optional |
+| `guardianContact` | string | Optional |
 
-### Medicines
-- `medicineId`, `userId`, `reportId`, `name`, `dosage`, `timings`, `active`.
+### `reports`
 
-### QR Shares
-- `shareId`: Unique identifier for the share.
-- `userId`: Reference to the user who created it.
-- `reportIds`: Array of strings (references to included reports).
-- `token`: Unique access token.
-- `expiresAt`: Timestamp of expiration.
-- `maxViews`: (Optional) Maximum allowed views.
-- `viewCount`: Number of times the link has been accessed.
-- `createdAt`: Timestamp of creation.
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `userId` | string | Reference to user document |
+| `imageUrl` | string | Public URL from Storage |
+| `rawText` | string | OCR extracted text |
+| `summary` | object | Structured summary (patient_name, report_date, diagnosis, medicines array, etc.) |
+| `timestamp` | timestamp | Upload time |
+
+### `medicines`
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `userId` | string | Reference to user |
+| `reportId` | string | Optional – reference to report |
+| `name` | string | Medicine name |
+| `dosage` | string | e.g., 200 mg |
+| `dosingInstruction` | string | e.g., "with food" |
+| `timings` | array | List of `{time: "09:00", taken: bool}` |
+| `startDate` | timestamp | When to start |
+| `endDate` | timestamp | Optional |
+| `active` | bool | Still active |
+
+### `qrShares`
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `token` | string | Unique token (document ID) |
+| `userId` | string | Who created the share |
+| `reportIds` | array | List of Firestore report IDs |
+| `expiresAt` | timestamp | Expiry time |
+| `createdAt` | timestamp | Creation time |
+
+---
 
 ## 8. User Flows
 
 ### 8.1 Onboarding
-1. User enters phone number → receives OTP → verifies.
-2. User enters name and selects preferred language (English/Hindi).
+1. User opens app → chooses Google Sign‑in (or phone login).
+2. After authentication, app checks if profile exists in Firestore.
+3. If not, shows Profile Setup screen with required fields (name, phone) and optional fields.
+4. User fills required fields (others can be skipped) → profile saved → proceeds to home screen.
 
-### 8.2 Uploading a Report
-1. Tap "Add Report" → choose file (PDF/Image).
-2. Code handles upload to Firebase Storage → triggers AI summarization.
-3. User sees "Processing..." → summary appears after extraction.
-4. Option to add medicine reminders directly from detected data.
+### 8.2 Profile Screen (Editable)
+- User can view/edit all profile fields except email (auto‑filled).
+- Save changes updates Firestore.
 
-### 8.3 AI Assistant
-1. Tap "Ask AI" → enters chat interface.
-2. Ask questions like: *"What was my last blood test result?"* or *"मुझे कब दवा लेनी है?"*
-3. Backend retrieves context from ChromaDB and returns an AI-generated answer.
+### 8.3 Uploading a Report
+1. Home screen → tap "Add Report" → choose file (image/PDF).
+2. App sends image to laptop backend → backend runs OCR and summarization → returns structured summary.
+3. App stores summary in local Hive and uploads to Firestore.
+4. User sees summary; if medicines detected, option to add reminders.
 
-### 8.4 Medicine Reminder
-1. User adds medicine (manual or AI-extracted).
-2. Notification fires at the scheduled time: *"Take Ferrous Sulfate – 200 mg – with breakfast"*.
-3. User marks as "taken" to track compliance.
+### 8.4 AI Assistant
+1. Tap "Ask AI" → opens chat.
+2. Type or speak a question (e.g., *"What was my last blood test result?"* or *"मुझे कौन सी दवा लेनी है?"*).
+3. App sends query to laptop's `/chat` endpoint.
+4. Response appears; optionally spoken aloud.
+5. User can follow up.
 
-### 8.5 QR Share
-1. User selects reports → sets expiry → taps "Generate QR".
-2. Doctor scans QR → view-only access to specific summaries and reports.
+### 8.5 Medicine Reminder
+1. From summary or manually, user adds medicine.
+2. Enter name, dosage, dosing instruction, times (e.g., 9:00, 21:00).
+3. App schedules local notifications.
+4. At scheduled time, notification fires: *"Take Ferrous Sulfate – 200 mg – with breakfast"*.
+5. User taps notification → opens app to mark taken.
+
+### 8.6 QR Share
+1. User selects one or more reports.
+2. Sets expiry (e.g., 24 hours) → tap "Generate QR".
+3. App calls backend, gets URL, shows QR code.
+4. Doctor scans → sees read‑only summary and report image.
+
+---
 
 ## 9. Challenges & Mitigations
 
 | Challenge | Mitigation |
 | :--- | :--- |
-| **LLM Memory** | Use 4‑bit quantization of Llama 3 8B or fallback to Phi‑3‑mini. |
-| **Hindi Support** | System prompting for multilingual responses; test with Aya‑23 if required. |
-| **OCR Accuracy** | Utilize PaddleOCR for high accuracy; allow manual summary correction. |
-| **Device Restarts** | Use `workmanager` to re-schedule alerts on boot. |
-| **Colab Timeout** | Use Colab Pro or fallback to Hugging Face Spaces/Replit. |
+| **LLM size vs GPU memory** | Use 4‑bit quantization (`q4_K_M`) of Llama 3 8B; fallback to Phi‑3‑mini (3.8B) or Mistral 7B with 3‑bit. |
+| **Hindi support in LLM** | Use a system prompt encouraging Hindi responses; test with Aya‑23 if needed. |
+| **OCR accuracy for Hindi** | Tesseract with Hindi language pack; ensure images are clear. Allow manual correction for poor quality. |
+| **Local notifications after device restart** | Use `workmanager` to re‑schedule reminders on app start. |
+| **Offline data access** | Hive stores all reports and reminders locally; Firestore sync occurs when online. |
+
+---
 
 ## 10. Future Scope
-- **Insurance Claim Integration**: Direct API submission to insurers.
-- **Multi-language Expansion**: Support for Malayalam, Tamil, etc.
-- **Wearable Integration**: Sync with smartwatches for vital signs.
-- **Telemedicine**: In-app video consultations.
-- **Health Trends**: AI-driven analysis of metrics over time.
+
+- **Insurance Claim Integration** – API to submit claims to insurers.
+- **Multi‑language Expansion** – Add Malayalam, Tamil, etc., using multilingual models.
+- **Wearable Integration** – Sync with smartwatches for vital signs.
+- **Telemedicine** – In‑app video consultation with doctors.
+- **Health Insights** – AI‑driven trend analysis (e.g., blood pressure over time).
+
+---
 
 ## 11. Conclusion
-**MediMetra** provides a privacy‑focused, zero-recurring-cost health solution for migrant workers. By decentralizing the AI backend and leveraging mobile-first design, it addresses critical health inequalities with a scalable, practical architecture.
+
+**MediMitra** provides a complete, privacy‑focused digital health solution for migrant workers. By combining a powerful offline AI backend (running locally on a laptop with Ollama and ChromaDB) with a user‑friendly Flutter app, it addresses a critical real‑world problem. The architecture is scalable, the features are well‑defined, and the use of open‑source tools ensures zero recurring costs – ideal for a hackathon entry that is both innovative and practical.
+
+---
 
 ## 12. Appendix: Sample API Endpoints
 
-### `/summarize` (POST)
-- **Input**: `{ "fileUrl": "...", "userId": "..." }`
-- **Process**: Download → OCR → Extraction → Firestore Storage.
+### `/upload_report` (POST)
+- **Input:** `user_id`, `language`, `file` (multipart/form‑data)
+- **Process:** OCR → summarisation → store in Firestore and ChromaDB → return summary JSON
 
 ### `/chat` (POST)
-- **Input**: `{ "userId": "...", "query": "..." }`
-- **Process**: Retrieval → RAG Prompt → Ollama Call → Response.
+- **Input:** `{ "user_id": "...", "query": "...", "language": "..." }`
+- **Process:** Retrieve relevant chunks from ChromaDB → build prompt → call Ollama → return answer
 
-### `/add_reminder` (Cloud Function)
-- **Input**: `{ "userId": "...", "medicine": {...} }`
-- **Process**: Store in Firestore → Trigger local app scheduling.
+### `/reports/{user_id}` (GET)
+- **Process:** Query Firestore for all reports of the user → return array of summaries
+
+### `/generate_share` (POST)
+- **Input:** `{ "user_id": "...", "report_ids": [...], "expiry_minutes": 1440 }`
+- **Process:** Generate random token, store in Firestore, return share URL
+
+### `/share/{token}` (GET)
+- **Process:** Validate token, fetch reports from Firestore, return list of summaries and image URLs
